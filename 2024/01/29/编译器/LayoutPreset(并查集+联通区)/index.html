@@ -1,0 +1,823 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>LayoutAlignToNPU | lulu-DT</title><meta name="author" content="lulu-DT"><meta name="copyright" content="lulu-DT"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="LayoutPreset(并查集 + 连通区域)原则 尽可能少的插入transpose 关键算子的layout需要满足条件 不能改变原图的语义  问题描述layout介绍layout大致可以分为以下三类：  Feature类 Weight类 Tensor类  Feature类是指Conv等算子的输入，例如NHWC,NCHW等，Weight类是指Conv等算子的kernel输入的layout， 例如">
+<meta property="og:type" content="article">
+<meta property="og:title" content="LayoutAlignToNPU">
+<meta property="og:url" content="http://example.com/2024/01/29/%E7%BC%96%E8%AF%91%E5%99%A8/LayoutPreset(%E5%B9%B6%E6%9F%A5%E9%9B%86+%E8%81%94%E9%80%9A%E5%8C%BA)/index.html">
+<meta property="og:site_name" content="lulu-DT">
+<meta property="og:description" content="LayoutPreset(并查集 + 连通区域)原则 尽可能少的插入transpose 关键算子的layout需要满足条件 不能改变原图的语义  问题描述layout介绍layout大致可以分为以下三类：  Feature类 Weight类 Tensor类  Feature类是指Conv等算子的输入，例如NHWC,NCHW等，Weight类是指Conv等算子的kernel输入的layout， 例如">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://i.loli.net/2020/05/01/gkihqEjXxJ5UZ1C.jpg">
+<meta property="article:published_time" content="2024-01-28T16:00:00.000Z">
+<meta property="article:modified_time" content="2024-01-28T16:00:00.000Z">
+<meta property="article:author" content="lulu-DT">
+<meta property="article:tag" content="编译器">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://i.loli.net/2020/05/01/gkihqEjXxJ5UZ1C.jpg"><link rel="shortcut icon" href="/img/favicon.png"><link rel="canonical" href="http://example.com/2024/01/29/%E7%BC%96%E8%AF%91%E5%99%A8/LayoutPreset(%E5%B9%B6%E6%9F%A5%E9%9B%86+%E8%81%94%E9%80%9A%E5%8C%BA)/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//fonts.googleapis.com" crossorigin=""/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css?v=4.12.0"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0.32/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Titillium+Web&amp;display=swap" media="print" onload="this.media='all'"><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: undefined,
+  translate: undefined,
+  noticeOutdate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":300},
+  copy: {
+    success: '复制成功',
+    error: '复制错误',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '天',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: undefined,
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid@4.11.0/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyload: false,
+  isAnchor: true,
+  percent: {
+    toc: true,
+    rightside: true,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'LayoutAlignToNPU',
+  isPost: true,
+  isHome: false,
+  isHighlightShrink: false,
+  isToc: true,
+  postUpdate: '2024-01-29 00:00:00'
+}</script><script>(win=>{
+      win.saveToLocal = {
+        set: (key, value, ttl) => {
+          if (ttl === 0) return
+          const now = Date.now()
+          const expiry = now + ttl * 86400000
+          const item = {
+            value,
+            expiry
+          }
+          localStorage.setItem(key, JSON.stringify(item))
+        },
+      
+        get: key => {
+          const itemStr = localStorage.getItem(key)
+      
+          if (!itemStr) {
+            return undefined
+          }
+          const item = JSON.parse(itemStr)
+          const now = Date.now()
+      
+          if (now > item.expiry) {
+            localStorage.removeItem(key)
+            return undefined
+          }
+          return item.value
+        }
+      }
+    
+      win.getScript = (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        script.onerror = reject
+        script.onload = script.onreadystatechange = function() {
+          const loadState = this.readyState
+          if (loadState && loadState !== 'loaded' && loadState !== 'complete') return
+          script.onload = script.onreadystatechange = null
+          resolve()
+        }
+
+        Object.keys(attr).forEach(key => {
+          script.setAttribute(key, attr[key])
+        })
+
+        document.head.appendChild(script)
+      })
+    
+      win.getCSS = (url, id = false) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onerror = reject
+        link.onload = link.onreadystatechange = function() {
+          const loadState = this.readyState
+          if (loadState && loadState !== 'loaded' && loadState !== 'complete') return
+          link.onload = link.onreadystatechange = null
+          resolve()
+        }
+        document.head.appendChild(link)
+      })
+    
+      win.activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      win.activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+      const t = saveToLocal.get('theme')
+    
+        if (t === 'dark') activateDarkMode()
+        else if (t === 'light') activateLightMode()
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        if (asideStatus === 'hide') {
+          document.documentElement.classList.add('hide-aside')
+        } else {
+          document.documentElement.classList.remove('hide-aside')
+        }
+      }
+    
+      const detectApple = () => {
+        if(/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)){
+          document.documentElement.classList.add('apple')
+        }
+      }
+      detectApple()
+    })(window)</script><meta name="generator" content="Hexo 7.1.1"></head><body><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img is-center"><img src="https://lulu-dt-images.oss-cn-chengdu.aliyuncs.com/imagesheadPhoto1.jpg" onerror="onerror=null;src='/img/friend_404.gif'" alt="avatar"/></div><div class="sidebar-site-data site-data is-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">8</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">6</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">5</div></a></div><hr class="custom-hr"/><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><a class="site-page" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></div><div class="menus_item"><a class="site-page" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 目录</span></a></div><div class="menus_item"><a class="site-page group" href="javascript:void(0);"><i class="fa-fw fas fa-list"></i><span> 清单</span><i class="fas fa-chevron-down"></i></a><ul class="menus_item_child"><li><a class="site-page child" href="/music/"><i class="fa-fw fas fa-music"></i><span> Music</span></a></li><li><a class="site-page child" href="/movies/"><i class="fa-fw fas fa-video"></i><span> Movie</span></a></li><li><a class="site-page child" href="/Gallery/"><i class="fa-fw fas fa-images"></i><span> images</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url('https://i.loli.net/2020/05/01/gkihqEjXxJ5UZ1C.jpg')"><nav id="nav"><span id="blog-info"><a href="/" title="lulu-DT"><img class="site-icon" src="https://lulu-dt-images.oss-cn-chengdu.aliyuncs.com/imagesheadPhoto1.jpg"/><span class="site-name">lulu-DT</span></a></span><div id="menus"><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><a class="site-page" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></div><div class="menus_item"><a class="site-page" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 目录</span></a></div><div class="menus_item"><a class="site-page group" href="javascript:void(0);"><i class="fa-fw fas fa-list"></i><span> 清单</span><i class="fas fa-chevron-down"></i></a><ul class="menus_item_child"><li><a class="site-page child" href="/music/"><i class="fa-fw fas fa-music"></i><span> Music</span></a></li><li><a class="site-page child" href="/movies/"><i class="fa-fw fas fa-video"></i><span> Movie</span></a></li><li><a class="site-page child" href="/Gallery/"><i class="fa-fw fas fa-images"></i><span> images</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于</span></a></div></div><div id="toggle-menu"><a class="site-page" href="javascript:void(0);"><i class="fas fa-bars fa-fw"></i></a></div></div></nav><div id="post-info"><h1 class="post-title">LayoutAlignToNPU</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2024-01-28T16:00:00.000Z" title="发表于 2024-01-29 00:00:00">2024-01-29</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2024-01-28T16:00:00.000Z" title="更新于 2024-01-29 00:00:00">2024-01-29</time></span><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E7%BC%96%E8%AF%91%E5%99%A8/">编译器</a></span></div><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title="LayoutAlignToNPU"><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">阅读量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="post-content" id="article-container"><h1 id="LayoutPreset-并查集-连通区域"><a href="#LayoutPreset-并查集-连通区域" class="headerlink" title="LayoutPreset(并查集 + 连通区域)"></a>LayoutPreset(并查集 + 连通区域)</h1><h2 id="原则"><a href="#原则" class="headerlink" title="原则"></a>原则</h2><ol>
+<li>尽可能少的插入transpose</li>
+<li>关键算子的layout需要满足条件</li>
+<li>不能改变原图的语义</li>
+</ol>
+<h2 id="问题描述"><a href="#问题描述" class="headerlink" title="问题描述"></a>问题描述</h2><h3 id="layout介绍"><a href="#layout介绍" class="headerlink" title="layout介绍"></a>layout介绍</h3><p>layout大致可以分为以下三类：</p>
+<ul>
+<li>Feature类</li>
+<li>Weight类</li>
+<li>Tensor类</li>
+</ul>
+<p><code>Feature</code>类是指Conv等算子的输入，例如<code>NHWC</code>,<code>NCHW</code>等，<code>Weight</code>类是指Conv等算子的kernel输入的layout， 例如<code>HWOI</code>,<code>OIHW</code>等，Tensor类比较通用，具体又可以分为<code>Tensor</code>和<code>NTesnor</code>， 主要用于Gemm矩阵乘等算子的输入，当然不排除其它算子同时支持上述三类layout， 例如点对点类型的算子<code>Add， Mul， Sub</code>等</p>
+<h3 id="layout传递"><a href="#layout传递" class="headerlink" title="layout传递"></a>layout传递</h3><p><code>transpose</code>弄够改变数据的排布方式， 并且这种影响是链式传递的</p>
+<p>如果是<code>Feature</code>类或者<code>Weight</code>类的layout，我们可以通过算子自带的layout属性信息了解到当前算子的数据摆布情况， 通过对比算子不同时期的layout属性我们可以判断出算子的layout发生了怎样的变化，这种能够判断算子layout是否发生变化的属性至关重要，对于多输入的算子， 总是要求其输入的变化一致，否则会产生无法预知的后果，并且很难追溯问题的根源</p>
+<p>如果是<code>Tensor</code>类的layout，其数据的排布信息无法通过算子的属性查询， 简单来说一个Tensor类的数据， 经过transpose变换后还是一个Tensor类，仅仅能从shape来判断大致经过了怎样的变化，但是当交换的维度的shape相同的时候，这两个Tensor类的数据在变换前后可以说看起来一模一样，无法区分是否经过了变换</p>
+<p>例如， 一个<code>1x2x3x1</code>的Tensor数据经过transpose变换为了<code>1x3x2x1</code>,这里可以大致判断出其数据第1，2维发生了交换</p>
+<p>再比如，一个<code>1x2x2x1</code>的Tensor数据交换其第1，2维，它的shape还是<code>1x2x2x1</code>， 无法区分是否经过了变换</p>
+<p>但是，若是一个<code>1x2x2x1</code>的nchw数据交换其1，2维度， 可以通过其layout变换为nhcw推导出它的交换信息</p>
+<h3 id="单CNN类型网络Preset"><a href="#单CNN类型网络Preset" class="headerlink" title="单CNN类型网络Preset"></a>单CNN类型网络Preset</h3><p>单CNN类型网络指图里面的节点仅为Feature类和Weight类</p>
+<p>单CNN类型网络的Preset流程异常简单， 仅需要在图的输入方向将layout转换为NHWC，该layout将会链式的向下传递，直到到达output节点，此时在插入transpose将NHWClayout转换为output指定的layout即可</p>
+<h3 id="多模态问题"><a href="#多模态问题" class="headerlink" title="多模态问题"></a>多模态问题</h3><p>多模态网络指<code>Feature</code>类，<code>Weight类</code>和<code>Tensor</code>类的layout共存</p>
+<p><code>Tensor</code>类的layout存在上述layout传递描述的问题，使得Preset的流程变得复杂，不得不考虑多种情况</p>
+<p>这里存在以下的矛盾：</p>
+<ol>
+<li><p>算子的输入可能来自于多个分支</p>
+</li>
+<li><p>transpose的插入会引起当前分支的后续节点的layout发生变化</p>
+</li>
+<li><p>若一个算子有多个输入，其中一个输入发生了变化，其它的输入应该也发生同样的变化</p>
+</li>
+<li>数据的layout为tensor类无法推导其维度变化</li>
+</ol>
+<p>以上的限制导致了我们不能随意的修改一个算子的layout，因为并不知道它的后续节点的输入是否来自于其它分支，是否做了同样的变换，有以下示例：</p>
+<pre class="mermaid">%%{
+  init: {
+      'curve': 'basis',
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#fff', 
+      'primaryTextColor': '#37383E',
+
+      'lineColor': '#BBBFC4',
+      'fontFamily': 'arial',
+      'tertiaryColor': '#fff'
+    },
+    'flowchart': {
+        'curve': 'basis'
+    }
+
+  }
+}%%
+%% 节点背景颜色和节点字体颜色 `primaryColor`, `primaryTextColor`
+%% style fill:lightgrey 浅灰色
+%% style fill:palegoldenrod 苍麒麟色。
+%% style fill:palegreen 苍绿色。
+%% style fill:paleturquoise 苍绿色。
+%% style fill:palevioletred 苍紫罗蓝色。
+%% style fill:pansy 紫罗兰色。
+%% style fill:papayawhip 番木色。
+%% style fill:peachpuff 桃色。
+
+flowchart LR
+  classDef default stroke:#000, stroke-width:0px
+  linkStyle default stroke:#BBBFC4, stroke-width:3px
+  classDef fillYellow fill:palegoldenrod
+  classDef fillGrey fill:lightgrey
+  classDef fillPeach fill:peachpuff
+
+  subgraph origin
+      input1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      input2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      input3((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      conv((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      reshape1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      reshape2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      add((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      output((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      n1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      n1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      n1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+
+      class input1,input2,input3,reshape1,reshape2,add,conv fillYellow
+      class add,reshape1,reshape2,n1 fillGrey
+      input1--nchw-->conv
+      input2--hwoi-->conv
+      conv--nchw-->reshape1
+      reshape1--"tensor(nchw)"-->add
+
+      input3--"tensor(nchw)"--->reshape2
+      reshape2--tensor(nchw)-->add
+      add--tensor-->n1
+  end
+
+  subgraph after
+      ainput1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      ainput2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      ainput3((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      aconv((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      areshape1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      areshape2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      aadd((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      aoutput((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      an1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      an1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      an1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+
+      atr((&nbsp&nbsp&nbsp&nbsp&nbsp))
+      class atr fillPeach
+
+      class ainput1,ainput2,ainput3,areshape1,areshape2,aadd,aconv fillYellow
+      class aadd,areshape1,areshape2,an1 fillGrey
+      ainput1--nchw-->atr--nhwc-->aconv
+      ainput2--hwoi--->aconv
+      aconv--nhwc-->areshape1
+      areshape1--"tensor(nhwc)"-->aadd
+
+      ainput3--"tensor(nchw)"---->areshape2
+      areshape2--tensor(nchw)-->aadd
+      aadd--tensor-->an1
+  end
+    subgraph  
+    remark["粉节点为插入的transpose节点"]
+    class remark fillPeach
+    end
+    origin--"insert transpose"-->after</pre>
+
+<p>当插入了transpose节点后， 左边分支transpose后的节点的layout均发生了改变，但是左右分支相对独立，无法获知这一种改变，导致最后的多输入节点两边的layout不一致，又由于这个多输入节点的输入均为Tensor类，并且变换前后shape没变，此时原算子的语义已经发生了改变</p>
+<h2 id="最简单的做法"><a href="#最简单的做法" class="headerlink" title="最简单的做法"></a>最简单的做法</h2><p>在每一个节点前后方都插入transpose， 前方节点从origin layout变为nhwc或者hwoi， 后方节点从nhwc或者hwoi变为origin 输出layout</p>
+<p>该做法只针对于节点自身的layout需求插入transpose， 前后方的transpose起到了隔离效果，不会影响到其它的节点，所以不会改变原图的语义</p>
+<pre class="mermaid">%%{
+  init: {
+      'curve': 'basis',
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#fff', 
+      'primaryTextColor': '#37383E',
+
+      'lineColor': '#BBBFC4',
+      'fontFamily': 'arial',
+      'tertiaryColor': '#fff'
+    },
+    'flowchart': {
+        'curve': 'basis'
+    }
+
+  }
+}%%
+%% 节点背景颜色和节点字体颜色 `primaryColor`, `primaryTextColor`
+%% style fill:lightgrey 浅灰色
+%% style fill:palegoldenrod 苍麒麟色。
+%% style fill:palegreen 苍绿色。
+%% style fill:paleturquoise 苍绿色。
+%% style fill:palevioletred 苍紫罗蓝色。
+%% style fill:pansy 紫罗兰色。
+%% style fill:papayawhip 番木色。
+%% style fill:peachpuff 桃色。
+
+flowchart LR
+  classDef default stroke:#000, stroke-width:0px
+  linkStyle default stroke:#BBBFC4, stroke-width:3px
+
+  subgraph  
+      subgraph after
+          node1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style node1 fill:palegoldenrod;
+          node2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style node2 fill:palegoldenrod;
+
+             trans1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+             style trans1 fill:peachpuff;
+          trans2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style trans2 fill:peachpuff;
+          trans3((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style trans3 fill:peachpuff;
+          trans4((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style trans4 fill:peachpuff;
+
+          node0(( ))--nchw-->trans1--nhwc-->node1--nhwc-->trans2--nchw-->trans3--nhwc-->node2--nhwc-->trans4-->node3(( ))
+
+      end
+
+      subgraph origin
+          origin_node1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style origin_node1 fill:palegoldenrod;
+          origin_node2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style origin_node2 fill:palegoldenrod;
+          origin_node1--nchw-->origin_node2
+
+          origin_node0(( ))--nchw-->origin_node1
+          origin_node2--nchw-->origin_node3(( ))
+      end
+      NOTION["桃色节点为插入的transpose节点"]
+      origin --> after~~~NOTION
+
+  end</pre>
+
+<p>但是该做法会插入2n个transpose，使得算法的总量剧增，即使后面的pass会去做冗余消除也是一个巨大的工作量，甚至有一些拓扑距离较远的transpose并不是很好消除</p>
+<h3 id="分析"><a href="#分析" class="headerlink" title="分析"></a>分析</h3><h4 id="优点"><a href="#优点" class="headerlink" title="优点"></a>优点</h4><ol>
+<li>算子独立处理，能够保证图的整体语义不发生改变</li>
+</ol>
+<h4 id="缺点"><a href="#缺点" class="headerlink" title="缺点"></a>缺点</h4><ol>
+<li>会插入巨量的transpose，性能极差</li>
+</ol>
+<h2 id="进阶做法"><a href="#进阶做法" class="headerlink" title="进阶做法"></a>进阶做法</h2><p>以上有做过单CNN类型网络Preset流程的概述，仅需在单CNN类型网络的输入和输出点进行transpose的插入即可</p>
+<p>针对于一个大的多模态网络，总是可以将网络进行拆分为若干个子网，这里假设划定子网的条件是<code>具有同一类型</code>的layout，并且将划分之后的子网看作一个<code>单独</code>的节点，对该单独的节点采用头尾插入transpose的方法即可完成layout的Preset， 并且，头尾的transpose隔离了这个<code>单独</code>的节点， 不会对前后的<code>单独</code>的节点造成影响</p>
+<p>以下case由于中间的两个节点均为Feature类的节点，将其归为一类，并且在头尾插入了transpose</p>
+<pre class="mermaid">%%{
+  init: {
+      'curve': 'basis',
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#fff', 
+      'primaryTextColor': '#37383E',
+
+      'lineColor': '#BBBFC4',
+      'fontFamily': 'arial',
+      'tertiaryColor': '#fff'
+    },
+    'flowchart': {
+        'curve': 'basis'
+    }
+
+  }
+}%%
+%% 节点背景颜色和节点字体颜色 `primaryColor`, `primaryTextColor`
+%% style fill:lightgrey 浅灰色
+%% style fill:palegoldenrod 苍麒麟色。
+%% style fill:palegreen 苍绿色。
+%% style fill:paleturquoise 苍绿色。
+%% style fill:palevioletred 苍紫罗蓝色。
+%% style fill:pansy 紫罗兰色。
+%% style fill:papayawhip 番木色。
+%% style fill:peachpuff 桃色。
+
+flowchart LR
+  classDef default stroke:#000, stroke-width:0px
+  linkStyle default stroke:#BBBFC4, stroke-width:3px
+
+  subgraph  
+      subgraph after
+          node1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style node1 fill:palegoldenrod;
+          node2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style node2 fill:palegoldenrod;
+
+             trans1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+             style trans1 fill:peachpuff;
+          trans2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+            style trans2 fill:peachpuff;
+
+          node0(( ))--nchw-->trans1--nhwc-->node1--nhwc-->node2--nhwc-->trans2--nchw-->node3(( ))
+
+      end
+
+      subgraph origin
+          origin_node1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style origin_node1 fill:palegoldenrod;
+          origin_node2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style origin_node2 fill:palegoldenrod;
+          origin_node1--nchw-->origin_node2
+
+          origin_node0(( ))--nchw-->origin_node1
+          origin_node2--nchw-->origin_node3(( ))
+      end
+      NOTION["桃色节点为插入的transpose节点"]
+      origin --> after~~~NOTION
+
+  end</pre>
+
+<h3 id="分析-1"><a href="#分析-1" class="headerlink" title="分析"></a>分析</h3><h4 id="优点-1"><a href="#优点-1" class="headerlink" title="优点"></a>优点</h4><ol>
+<li>算子按区域单独处理，能够保证图的整体语义不发生改变</li>
+<li>相比于只对单个算子处理插入的节点会少很多</li>
+</ol>
+<h4 id="缺点-1"><a href="#缺点-1" class="headerlink" title="缺点"></a>缺点</h4><ol>
+<li>对于多模态的情况， 由于Tensor类和Feature类有不同的layout，该算法会在每个Tensor类和Feature的交界处进行插入，还是会插入数量较多的transpose</li>
+</ol>
+<pre class="mermaid">%%{
+  init: {
+      'curve': 'basis',
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#fff', 
+      'primaryTextColor': '#37383E',
+
+      'lineColor': '#BBBFC4',
+      'fontFamily': 'arial',
+      'tertiaryColor': '#fff'
+    },
+    'flowchart': {
+        'curve': 'basis'
+    }
+
+  }
+}%%
+%% 节点背景颜色和节点字体颜色 `primaryColor`, `primaryTextColor`
+%% style fill:lightgrey 浅灰色
+%% style fill:palegoldenrod 苍麒麟色。
+%% style fill:palegreen 苍绿色。
+%% style fill:paleturquoise 苍绿色。
+%% style fill:palevioletred 苍紫罗蓝色。
+%% style fill:pansy 紫罗兰色。
+%% style fill:papayawhip 番木色。
+%% style fill:peachpuff 桃色。
+
+flowchart LR
+  classDef default stroke:#000, stroke-width:0px
+  linkStyle default stroke:#BBBFC4, stroke-width:3px
+
+  subgraph  
+      subgraph after
+          node1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style node1 fill:palegoldenrod;
+          node2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style node2 fill:palegoldenrod;
+
+          tensor((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style tensor fill:lightgrey;
+
+             trans1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+             style trans1 fill:peachpuff;
+          trans2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+            style trans2 fill:peachpuff;
+            trans3((&nbsp&nbsp&nbsp&nbsp&nbsp))
+             style trans3 fill:peachpuff;
+          trans4((&nbsp&nbsp&nbsp&nbsp&nbsp))
+            style trans4 fill:peachpuff;
+
+          node0(( ))--nchw-->trans1--nhwc-->node1--nhwc-->trans3--nchw-->tensor--nchw-->trans4--nhwc-->node2--nhwc-->trans2--nchw-->node3(( ))
+
+      end
+
+      subgraph origin
+          origin_node1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style origin_node1 fill:palegoldenrod;
+          origin_node2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style origin_node2 fill:palegoldenrod;
+          origin_node1--nchw-->origin_node2
+
+          origin_node0(( ))--nchw-->origin_node1
+          origin_node2--nchw-->origin_node3(( ))
+      end
+      NOTION["桃色节点为插入的transpose节点"]
+      origin --> after~~~NOTION
+
+  end</pre>
+
+
+
+<h2 id="进阶做法Plus"><a href="#进阶做法Plus" class="headerlink" title="进阶做法Plus"></a>进阶做法Plus</h2><p>相比于进阶算法的划分区域的决策方法， 这里再加上一条补充：</p>
+<ul>
+<li>当一个算子（区域）的输入均属于Feature类或者Weight类并且输入Layout相同的时候，可以将其归类到任意输入算子的区域</li>
+</ul>
+<p>该优化主要针对于Tensor类的连通区域，对于Feature类或者Weight类的layout，我们的目标是将其规范到<code>NHWC</code>和<code>HWOI</code>，若一个区域的所有输入节点均是同类的Layout并且做了同样的变换，那该区域的语义便不会发生改变</p>
+<p>注意，这里同时限定了输入layout必须相同，主要是为了预防特殊情况，若一个多输入的Tensor类算子，其其中一个分支的原始layout为NHWC，另一个分支的原始layout为NCHW，若不加layout必须相同的限制，那么该算子会向上归类，从而不会在该算子和其输入之间插入transpose，然后对于NCHW分支，我们会统一归类为NHWC，但是对于NHWC分支又不会去做变换， 这里就产生了冲突</p>
+<pre class="mermaid">%%{
+  init: {
+      'curve': 'basis',
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#fff', 
+      'primaryTextColor': '#37383E',
+
+      'lineColor': '#BBBFC4',
+      'fontFamily': 'arial',
+      'tertiaryColor': '#fff'
+    },
+    'flowchart': {
+        'curve': 'basis'
+    }
+
+  }
+}%%
+%% 节点背景颜色和节点字体颜色 `primaryColor`, `primaryTextColor`
+%% style fill:lightgrey 浅灰色
+%% style fill:palegoldenrod 苍麒麟色。
+%% style fill:palegreen 苍绿色。
+%% style fill:paleturquoise 苍绿色。
+%% style fill:palevioletred 苍紫罗蓝色。
+%% style fill:pansy 紫罗兰色。
+%% style fill:papayawhip 番木色。
+%% style fill:peachpuff 桃色。
+
+flowchart LR
+  classDef default stroke:#000, stroke-width:0px
+  linkStyle default stroke:#BBBFC4, stroke-width:3px
+
+  subgraph  
+      subgraph after
+          node1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style node1 fill:palegoldenrod;
+          node2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style node2 fill:palegoldenrod;
+
+          tensor((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style tensor fill:lightgrey;
+
+             trans1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+             style trans1 fill:peachpuff;
+          trans2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+            style trans2 fill:peachpuff;
+
+          node0(( ))--nchw-->trans1--nhwc-->node1--nhwc-->tensor--nhwc-->node2--nhwc-->trans2--nchw-->node3(( ))
+
+      end
+
+      subgraph origin
+          origin_node1((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style origin_node1 fill:palegoldenrod;
+          origin_node2((&nbsp&nbsp&nbsp&nbsp&nbsp))
+          style origin_node2 fill:palegoldenrod;
+          origin_node1--nchw-->origin_node2
+
+          origin_node0(( ))--nchw-->origin_node1
+          origin_node2--nchw-->origin_node3(( ))
+      end
+      NOTION["桃色节点为插入的transpose节点"]
+      origin --> after~~~NOTION
+
+  end</pre>
+
+
+
+<h3 id="分析-2"><a href="#分析-2" class="headerlink" title="分析"></a>分析</h3><h4 id="优点-2"><a href="#优点-2" class="headerlink" title="优点"></a>优点</h4><ol>
+<li>算子按区域单独处理，能够保证图的整体语义不发生改变</li>
+<li>相比于进阶算法，将多模态问题纳入了体系，理想情况下，整个网络将会被认为是一个连通图，仅需要在输入以及输出位置插入transpose即可</li>
+</ol>
+<h2 id="实现思路"><a href="#实现思路" class="headerlink" title="实现思路"></a>实现思路</h2><h3 id="算法抽象"><a href="#算法抽象" class="headerlink" title="算法抽象"></a>算法抽象</h3><p>该算法可以抽象为一个节点的聚类问题，将性质相同的节点聚合为一个类，然后单独对这个聚合类进行处理</p>
+<h3 id="并查集"><a href="#并查集" class="headerlink" title="并查集"></a>并查集</h3><p>以下为并查集的详细介绍， 这里只做简单的科普</p>
+<p><a target="_blank" rel="noopener" href="https://www.runoob.com/data-structures/union-find-basic.html">并查集基础 | 菜鸟教程 (runoob.com)</a></p>
+<p>可以把并查集认为是一个站队问题，分为两步<code>查</code>, <code>并</code></p>
+<ol>
+<li><p>最开始的情况是每个节点各自为战，每个节点表示一个队列</p>
+</li>
+<li><p>然后每个节点进行查询， 看自身归为哪一类，若查询到自己的类别，便将自己归类</p>
+</li>
+<li>遍历完成后便可完成分类</li>
+</ol>
+<pre class="mermaid">%%{
+  init: {
+      'curve': 'basis',
+    'theme': 'base',
+    'themeVariables': {
+      'primaryColor': '#fff', 
+      'primaryTextColor': '#37383E',
+
+      'lineColor': '#BBBFC4',
+      'fontFamily': 'arial',
+      'tertiaryColor': '#fff'
+    },
+    'flowchart': {
+        'curve': 'basis'
+    }
+
+  }
+}%%
+%% 节点背景颜色和节点字体颜色 `primaryColor`, `primaryTextColor`
+%% style fill:lightgrey 浅灰色
+%% style fill:palegoldenrod 苍麒麟色。
+%% style fill:palegreen 苍绿色。
+%% style fill:paleturquoise 苍绿色。
+%% style fill:palevioletred 苍紫罗蓝色。
+%% style fill:pansy 紫罗兰色。
+%% style fill:papayawhip 番木色。
+%% style fill:peachpuff 桃色。
+
+flowchart TB
+  classDef default stroke:#000, stroke-width:0px
+  linkStyle default stroke:#BBBFC4, stroke-width:3px
+  classDef fillYellow fill:palegoldenrod
+  classDef fillGrey fill:lightgrey
+  classDef fillPeach fill:peachpuff
+
+  subgraph step3
+  31((&nbsp&nbsp&nbsp&nbsp))
+  32((&nbsp&nbsp&nbsp&nbsp))
+  31-->32
+  32-->32
+  33((&nbsp&nbsp&nbsp&nbsp))
+  33-->32
+  34((&nbsp&nbsp&nbsp&nbsp))
+  35((&nbsp&nbsp&nbsp&nbsp))
+  34-->35
+  35-->35
+  36((&nbsp&nbsp&nbsp&nbsp))
+  36-->35
+  37((&nbsp&nbsp&nbsp&nbsp))
+  37-->38
+  38((&nbsp&nbsp&nbsp&nbsp))
+  38-->38
+  39((&nbsp&nbsp&nbsp&nbsp))
+  39-->38
+  class 31,32,33 fillGrey
+  class 34,35,36 fillYellow
+  class 37,38,39 fillPeach
+  end
+
+  subgraph step2
+  21((&nbsp&nbsp&nbsp&nbsp))
+  22((&nbsp&nbsp&nbsp&nbsp))
+  21-->22
+  22-->22
+  23((&nbsp&nbsp&nbsp&nbsp))
+  23-->23
+  24((&nbsp&nbsp&nbsp&nbsp))
+  25((&nbsp&nbsp&nbsp&nbsp))
+  24-->25
+  25-->25
+  26((&nbsp&nbsp&nbsp&nbsp))
+  26-->26
+  27((&nbsp&nbsp&nbsp&nbsp))
+  27-->28
+  28((&nbsp&nbsp&nbsp&nbsp))
+  28-->28
+  29((&nbsp&nbsp&nbsp&nbsp))
+  29-->29
+  class 21,22,23 fillGrey
+  class 24,25,26 fillYellow
+  class 27,28,29 fillPeach
+  end
+
+  subgraph step1
+  11((&nbsp&nbsp&nbsp&nbsp))
+  11-->11
+  12((&nbsp&nbsp&nbsp&nbsp))
+  12-->12
+  13((&nbsp&nbsp&nbsp&nbsp))
+  13-->13
+  14((&nbsp&nbsp&nbsp&nbsp))
+  14-->14
+  15((&nbsp&nbsp&nbsp&nbsp))
+  15-->15
+  16((&nbsp&nbsp&nbsp&nbsp))
+  16-->16
+  17((&nbsp&nbsp&nbsp&nbsp))
+  17-->17
+  18((&nbsp&nbsp&nbsp&nbsp))
+  18-->18
+  19((&nbsp&nbsp&nbsp&nbsp))
+  19-->19
+  class 11,12,13 fillGrey
+  class 14,15,16 fillYellow
+  class 17,18,19 fillPeach
+  end</pre>
+
+<h3 id="数据结构"><a href="#数据结构" class="headerlink" title="数据结构"></a>数据结构</h3><figure class="highlight c++"><table><tr><td class="code"><pre><span class="line"><span class="comment">// 并查集，用于分类</span></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">UnionFind</span> &#123;</span><br><span class="line"><span class="keyword">private</span>:</span><br><span class="line">    unordered_map&lt;Operation*, Operation*&gt; parent;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line">    <span class="comment">// 初始化并查集，每个节点的父节点初始化为自己</span></span><br><span class="line">    <span class="built_in">UnionFind</span>(mlir::FuncOp funcOp) &#123;</span><br><span class="line">      	funcOp.<span class="built_in">walk</span>([](Operation* op)&#123;</span><br><span class="line">        		parent[op] = op;</span><br><span class="line">        &#125;);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 查找节点的根节点（所属集合的代表元素）</span></span><br><span class="line">    <span class="function"><span class="type">int</span> <span class="title">find</span><span class="params">(Operation* node)</span> </span>&#123;</span><br><span class="line">        <span class="keyword">if</span> (parent[node] != node) &#123;</span><br><span class="line">            parent[node] = <span class="built_in">find</span>(parent[node]);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> parent[node];</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 合并两个节点所在的集合</span></span><br><span class="line">    <span class="function"><span class="type">void</span> <span class="title">unionNodes</span><span class="params">(Operation* node1, Operation* node2)</span> </span>&#123;</span><br><span class="line">        <span class="type">int</span> root1 = <span class="built_in">find</span>(node1);</span><br><span class="line">        <span class="type">int</span> root2 = <span class="built_in">find</span>(node2);</span><br><span class="line">        <span class="keyword">if</span> (root1 != root2) &#123;</span><br><span class="line">            parent[root1] = root2;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  <span class="comment">// 得到最后的集合</span></span><br><span class="line">  <span class="function"><span class="type">void</span> <span class="title">getSets</span><span class="params">(std::map&lt;Operation*, std::set&lt;Operation*&gt;&gt; sets)</span> </span>&#123;</span><br><span class="line">  		<span class="keyword">for</span> (<span class="keyword">auto</span> it : parent) &#123;</span><br><span class="line">      	sets[it.second].<span class="built_in">insert</span>(it.first);</span><br><span class="line">      &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<h3 id="算法流程"><a href="#算法流程" class="headerlink" title="算法流程"></a>算法流程</h3><h4 id="归类"><a href="#归类" class="headerlink" title="归类"></a>归类</h4><p>归类分两次进行归类， 第一次归类CNN类型和Tensor类， 第二次将能合并的Tensor类与CNN类进行归类</p>
+<p>对于第一次归类， 其原则为：</p>
+<ul>
+<li>对于当前op，若op自身的layout与输入layout属于同一类，将当前op与前置节点归为一类</li>
+<li>若op有多个输入，并且自身与输入的layout均属于同一类，将当前op与其所有的输入归为一类</li>
+<li>若op有多个输入， 并且自身与与其中的某几个（非所有）输入layout一致，将当前op与layout一致的前置节点归为一类， 不一致的不归类</li>
+</ul>
+<p>第二次归类的原则为：</p>
+<ul>
+<li>若当前类别为Tensor类， 找到当前类别所有的输入节点，判断类别是否一致(Feature, Weight)， 若一致则判断layout是否相同(NHWC, NCHW等)，若均满足条件，将当前区域及所有输入的前置区域进行归类， 否则不归类</li>
+<li>若该区域的某些输入节点为Input或者Const并且输入节点的layout为Tensor类型，则不进行归类</li>
+</ul>
+<h4 id="插入"><a href="#插入" class="headerlink" title="插入"></a>插入</h4><p>插入针对于区域的所有输入节点和输出节点进行，先对输出进行插入，然后对输入进行插入</p>
+<p>输出插入位置：</p>
+<ul>
+<li>若输出节点为output节点，则插入到output节点之前，保留output节点的原始layout不变</li>
+<li>若输出节点不为output节点，则插入到输出节点之后， 转换为输出节点之后的节点的原始layout</li>
+</ul>
+<p>输入插入位置：</p>
+<ul>
+<li>若输入为input或者const节点， 则插入到input或者const节点之后， 保证输入节点的layout不变</li>
+<li>若输入不为input或者const节点， 则插入到输入节点之前，从原始的输入layout转变为NHWC或者HWOI</li>
+</ul>
+<h2 id="特殊情况分析"><a href="#特殊情况分析" class="headerlink" title="特殊情况分析"></a>特殊情况分析</h2><h3 id="transpose算子的处理"><a href="#transpose算子的处理" class="headerlink" title="transpose算子的处理"></a>transpose算子的处理</h3><p>transpose会改变前后的layout，当前后layout变化之后，tranpose的行为不好预测，这里将transpose单独归类， 所有的transpose均为一个单独的连通区域， 在前后进行transpose的插入</p>
+<p>这种做法会产生三个连着的transpose，在优化阶段能够很好的消除， 不会带来额外的开销</p>
+<h3 id="Tensor-gt-CNN"><a href="#Tensor-gt-CNN" class="headerlink" title="Tensor-&gt;CNN"></a>Tensor-&gt;CNN</h3><p>Tensor到CNN指的是一个算子其输入为Tensor类， 但是输入为Tensor类，这种往往是经过Reshape变换得到， 不排除其它算子计算后layout改变（add等），这种实际上算子本身应该算是CNN类，会和算子后方的CNN类归为一类，插入transpose会插入到该算子之前，将当前算子的原始Layout转变为CNN类要求的layout，一般来说会变成transpose + reshape结构</p>
+<p>但是当前方的Tensor类算子与更前方的CNN类合并之后，实际上前方的Tensor类也会看成CNN类， 这种情况下不需要进行插入， 仅需要将当前算子的layout之间转变为该类算子Preset之后的layout即可</p>
+<h3 id="CNN-gt-Tensor"><a href="#CNN-gt-Tensor" class="headerlink" title="CNN-&gt;Tensor"></a>CNN-&gt;Tensor</h3><p>CNN到Tensor指的是一个算子其输入为CNN类， 但是输入为Tensor类，这种往往也是经过Reshape变换得到， 不排除其它算子计算后layout改变（add等），这种实际上算子本身应该算是Tensor类，会和算子后方的Tensor类归为一类，插入transpose会插入到该算子之前，将当前算子的layout从Preset之后layout转变为原始layout</p>
+<p>如果当前算子进行连通区域合并之后，不需要进行transpose的插入， 也不需要额外的进行layout的修改</p>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="http://example.com">lulu-DT</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="http://example.com/2024/01/29/%E7%BC%96%E8%AF%91%E5%99%A8/LayoutPreset(%E5%B9%B6%E6%9F%A5%E9%9B%86+%E8%81%94%E9%80%9A%E5%8C%BA)/">http://example.com/2024/01/29/%E7%BC%96%E8%AF%91%E5%99%A8/LayoutPreset(%E5%B9%B6%E6%9F%A5%E9%9B%86+%E8%81%94%E9%80%9A%E5%8C%BA)/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来自 <a href="http://example.com" target="_blank">lulu-DT</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E7%BC%96%E8%AF%91%E5%99%A8/">编译器</a></div><div class="post_share"><div class="social-share" data-image="https://i.loli.net/2020/05/01/gkihqEjXxJ5UZ1C.jpg" data-sites="facebook,twitter,wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc@1.1.3/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc@1.1.3/sharejs/dist/js/social-share.min.js" defer></script></div></div><div class="post-reward"><div class="reward-button"><i class="fas fa-qrcode"></i>赞助</div><div class="reward-main"><ul class="reward-all"><li class="reward-item"><a href="https://lulu-dt.oss-cn-chengdu.aliyuncs.com/markdown20240124112943.png" target="_blank"><img class="post-qr-code-img" src="https://lulu-dt.oss-cn-chengdu.aliyuncs.com/markdown20240124112943.png"/></a><div class="post-qr-code-desc"></div></li></ul></div></div><nav class="pagination-post" id="pagination"><div class="prev-post pull-left"><a href="/2024/01/29/%E5%85%B6%E5%AE%83/Latex/Latex/" title="Latex"><img class="cover" src="https://lulu-dt.oss-cn-chengdu.aliyuncs.com/markdownzz.jpg" onerror="onerror=null;src='/img/404.jpg'" alt="cover of previous post"><div class="pagination-info"><div class="label">上一篇</div><div class="prev_info">Latex</div></div></a></div><div class="next-post pull-right"><a href="/2024/01/26/Linux/Vim%E9%85%8D%E7%BD%AE/" title="Vim配置"><img class="cover" src="https://i.loli.net/2020/05/01/gkihqEjXxJ5UZ1C.jpg" onerror="onerror=null;src='/img/404.jpg'" alt="cover of next post"><div class="pagination-info"><div class="label">下一篇</div><div class="next_info">Vim配置</div></div></a></div></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><div><a href="/2024/01/29/%E7%BC%96%E8%AF%91%E5%99%A8/SSA/" title="静态单赋值形式(SSA)"><img class="cover" src="https://lulu-dt.oss-cn-chengdu.aliyuncs.com/markdownmm.jpg" alt="cover"><div class="content is-center"><div class="date"><i class="far fa-calendar-alt fa-fw"></i> 2024-01-29</div><div class="title">静态单赋值形式(SSA)</div></div></a></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#LayoutPreset-%E5%B9%B6%E6%9F%A5%E9%9B%86-%E8%BF%9E%E9%80%9A%E5%8C%BA%E5%9F%9F"><span class="toc-number">1.</span> <span class="toc-text">LayoutPreset(并查集 + 连通区域)</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8E%9F%E5%88%99"><span class="toc-number">1.1.</span> <span class="toc-text">原则</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%97%AE%E9%A2%98%E6%8F%8F%E8%BF%B0"><span class="toc-number">1.2.</span> <span class="toc-text">问题描述</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#layout%E4%BB%8B%E7%BB%8D"><span class="toc-number">1.2.1.</span> <span class="toc-text">layout介绍</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#layout%E4%BC%A0%E9%80%92"><span class="toc-number">1.2.2.</span> <span class="toc-text">layout传递</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8D%95CNN%E7%B1%BB%E5%9E%8B%E7%BD%91%E7%BB%9CPreset"><span class="toc-number">1.2.3.</span> <span class="toc-text">单CNN类型网络Preset</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E6%A8%A1%E6%80%81%E9%97%AE%E9%A2%98"><span class="toc-number">1.2.4.</span> <span class="toc-text">多模态问题</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%9C%80%E7%AE%80%E5%8D%95%E7%9A%84%E5%81%9A%E6%B3%95"><span class="toc-number">1.3.</span> <span class="toc-text">最简单的做法</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E6%9E%90"><span class="toc-number">1.3.1.</span> <span class="toc-text">分析</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%BC%98%E7%82%B9"><span class="toc-number">1.3.1.1.</span> <span class="toc-text">优点</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%BC%BA%E7%82%B9"><span class="toc-number">1.3.1.2.</span> <span class="toc-text">缺点</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%BF%9B%E9%98%B6%E5%81%9A%E6%B3%95"><span class="toc-number">1.4.</span> <span class="toc-text">进阶做法</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E6%9E%90-1"><span class="toc-number">1.4.1.</span> <span class="toc-text">分析</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%BC%98%E7%82%B9-1"><span class="toc-number">1.4.1.1.</span> <span class="toc-text">优点</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%BC%BA%E7%82%B9-1"><span class="toc-number">1.4.1.2.</span> <span class="toc-text">缺点</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%BF%9B%E9%98%B6%E5%81%9A%E6%B3%95Plus"><span class="toc-number">1.5.</span> <span class="toc-text">进阶做法Plus</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E6%9E%90-2"><span class="toc-number">1.5.1.</span> <span class="toc-text">分析</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%BC%98%E7%82%B9-2"><span class="toc-number">1.5.1.1.</span> <span class="toc-text">优点</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AE%9E%E7%8E%B0%E6%80%9D%E8%B7%AF"><span class="toc-number">1.6.</span> <span class="toc-text">实现思路</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%AE%97%E6%B3%95%E6%8A%BD%E8%B1%A1"><span class="toc-number">1.6.1.</span> <span class="toc-text">算法抽象</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B6%E6%9F%A5%E9%9B%86"><span class="toc-number">1.6.2.</span> <span class="toc-text">并查集</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="toc-number">1.6.3.</span> <span class="toc-text">数据结构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%AE%97%E6%B3%95%E6%B5%81%E7%A8%8B"><span class="toc-number">1.6.4.</span> <span class="toc-text">算法流程</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%BD%92%E7%B1%BB"><span class="toc-number">1.6.4.1.</span> <span class="toc-text">归类</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%8F%92%E5%85%A5"><span class="toc-number">1.6.4.2.</span> <span class="toc-text">插入</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%89%B9%E6%AE%8A%E6%83%85%E5%86%B5%E5%88%86%E6%9E%90"><span class="toc-number">1.7.</span> <span class="toc-text">特殊情况分析</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#transpose%E7%AE%97%E5%AD%90%E7%9A%84%E5%A4%84%E7%90%86"><span class="toc-number">1.7.1.</span> <span class="toc-text">transpose算子的处理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Tensor-gt-CNN"><span class="toc-number">1.7.2.</span> <span class="toc-text">Tensor-&gt;CNN</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#CNN-gt-Tensor"><span class="toc-number">1.7.3.</span> <span class="toc-text">CNN-&gt;Tensor</span></a></li></ol></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div id="footer-wrap"><div class="copyright">&copy;Mon Jan 01 2024 08:00:00 GMT+0800 (China Standard Time) - 2024 By lulu-DT</div><div class="framework-info"><span>框架 </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly</a></div><div class="footer_custom_text">Hi, welcome to my <a target="_blank" rel="noopener" href="https://www.lulu-dt.cn/">blog</a>!</div></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><button id="darkmode" type="button" title="浅色和深色模式转换"><i class="fas fa-adjust"></i></button><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js?v=4.12.0"></script><script src="/js/main.js?v=4.12.0"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0.32/dist/fancybox/fancybox.umd.min.js"></script><script>function panguFn () {
+  if (typeof pangu === 'object') pangu.autoSpacingPage()
+  else {
+    getScript('https://cdn.jsdelivr.net/npm/pangu@4.0.7/dist/browser/pangu.min.js')
+      .then(() => {
+        pangu.autoSpacingPage()
+      })
+  }
+}
+
+function panguInit () {
+  if (false){
+    GLOBAL_CONFIG_SITE.isPost && panguFn()
+  } else {
+    panguFn()
+  }
+}
+
+document.addEventListener('DOMContentLoaded', panguInit)</script><div class="js-pjax"><script>if (!window.MathJax) {
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      tags: 'ams'
+    },
+    chtml: {
+      scale: 1.1
+    },
+    options: {
+      renderActions: {
+        findScript: [10, doc => {
+          for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+            const display = !!node.type.match(/; *mode=display/)
+            const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+            const text = document.createTextNode('')
+            node.parentNode.replaceChild(text, node)
+            math.start = {node: text, delim: '', n: 0}
+            math.end = {node: text, delim: '', n: 0}
+            doc.math.push(math)
+          }
+        }, '']
+      }
+    }
+  }
+  
+  const script = document.createElement('script')
+  script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.min.js'
+  script.id = 'MathJax-script'
+  script.async = true
+  document.head.appendChild(script)
+} else {
+  MathJax.startup.document.state(0)
+  MathJax.texReset()
+  MathJax.typesetPromise()
+}</script><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"><script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/copy-tex.min.js"></script><script>(() => {
+  document.querySelectorAll('#article-container span.katex-display').forEach(item => {
+    btf.wrap(item, 'div', { class: 'katex-wrap'})
+  })
+})()</script><script>(() => {
+  const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+  if ($mermaid.length === 0) return
+  const runMermaid = () => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'default' : 'default'
+
+    Array.from($mermaid).forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = '%%{init:{ \'theme\':\'' + theme + '\'}}%%\n'
+      const mermaidID = 'mermaid-' + index
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+
+      const renderV10 = () => {
+        renderFn.then(({svg}) => {
+          mermaidSrc.insertAdjacentHTML('afterend', svg)
+        })
+      }
+
+      const renderV9 = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      typeof renderFn === 'string' ? renderV9(renderFn) : renderV10()
+    })
+  }
+
+  const loadMermaid = () => {
+    window.loadMermaid ? runMermaid() : getScript('https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js').then(runMermaid)
+  }
+
+  btf.addGlobalFn('themeChange', runMermaid, 'mermaid')
+
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script></div><script defer="defer" id="fluttering_ribbon" mobile="false" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc@1.1.3/dist/canvas-fluttering-ribbon.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script></div></body></html>
